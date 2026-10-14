@@ -1,0 +1,6 @@
+services:
+  vote:
+    ports: !reset []
+
+  result:
+    ports: !reset []

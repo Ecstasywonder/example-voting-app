@@ -1,0 +1,9 @@
+.git
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.log
+.env
+.DS_Store

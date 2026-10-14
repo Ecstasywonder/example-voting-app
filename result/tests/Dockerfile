@@ -1,12 +1,7 @@
-FROM node:8.9-slim
+FROM python:3.11.16-slim-bookworm@sha256:a36c24f9cbdf4fd0f52d67f0823eeac19c2028c637cecc392d97f980d4fec56b
 
-RUN apt-get update -qq && apt-get install -qy \ 
-    ca-certificates \
-    bzip2 \
-    curl \
-    libfontconfig \
-    --no-install-recommends
-RUN yarn global add phantomjs-prebuilt
-ADD . /app
 WORKDIR /app
-CMD ["/app/tests.sh"]
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin testuser
+COPY --chown=testuser:testuser tests.py ./tests.py
+USER 10001
+CMD ["python", "/app/tests.py"]
