@@ -16,7 +16,14 @@ namespace Worker
         {
             try
             {
-                var pgsql = OpenDbConnection("Server=db;Username=postgres;Password=postgres;");
+                var postgresConnectionString = new NpgsqlConnectionStringBuilder
+                {
+                    Host = GetEnvironmentVariable("PGHOST", "db"),
+                    Username = GetEnvironmentVariable("PGUSER", "postgres"),
+                    Password = GetEnvironmentVariable("PGPASSWORD", "postgres"),
+                    Database = GetEnvironmentVariable("PGDATABASE", "postgres")
+                }.ConnectionString;
+                var pgsql = OpenDbConnection(postgresConnectionString);
                 var redisConn = OpenRedisConnection("redis");
                 var redis = redisConn.GetDatabase();
 
@@ -46,7 +53,7 @@ namespace Worker
                         if (!pgsql.State.Equals(System.Data.ConnectionState.Open))
                         {
                             Console.WriteLine("Reconnecting DB");
-                            pgsql = OpenDbConnection("Server=db;Username=postgres;Password=postgres;");
+                            pgsql = OpenDbConnection(postgresConnectionString);
                         }
                         else
                         { // Normal +1 vote requested
@@ -101,6 +108,9 @@ namespace Worker
 
             return connection;
         }
+
+        private static string GetEnvironmentVariable(string name, string fallback)
+            => Environment.GetEnvironmentVariable(name) ?? fallback;
 
         private static ConnectionMultiplexer OpenRedisConnection(string hostname)
         {
