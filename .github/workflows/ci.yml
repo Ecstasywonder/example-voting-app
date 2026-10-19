@@ -1,0 +1,194 @@
+name: Capstone CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capstone-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  end-to-end:
+    name: Compose end-to-end tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: result
+    env:
+      COMPOSE_PROJECT_NAME: capstone-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run the Compose integration suite
+        run: >-
+          docker compose --project-name "$COMPOSE_PROJECT_NAME"
+          --file docker-compose.test.yml up --build --abort-on-container-exit
+          --exit-code-from sut
+
+      - name: Collect Compose logs
+        if: failure()
+        run: >-
+          docker compose --project-name "$COMPOSE_PROJECT_NAME"
+          --file docker-compose.test.yml logs --no-color
+          > "$RUNNER_TEMP/compose-test.log"
+
+      - name: Upload failed Compose logs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compose-test-logs-${{ github.run_id }}
+          path: ${{ runner.temp }}/compose-test.log
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Remove test containers and volumes
+        if: always()
+        run: >-
+          docker compose --project-name "$COMPOSE_PROJECT_NAME"
+          --file docker-compose.test.yml down --volumes --remove-orphans
+
+  build-and-scan:
+    name: Build and scan ${{ matrix.name }}
+    needs: end-to-end
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: vote
+            context: vote
+            dockerfile: vote/Dockerfile
+          - name: result
+            context: result
+            dockerfile: result/Dockerfile
+          - name: worker
+            context: worker
+            dockerfile: worker/Dockerfile
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Derive the GHCR repository name
+        id: image
+        env:
+          IMAGE_NAME: ${{ matrix.name }}
+        run: |
+          image_owner="${GITHUB_REPOSITORY_OWNER,,}"
+          printf 'repository=ghcr.io/%s/example-voting-app-%s\n' "$image_owner" "$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Build the linux/amd64 application image
+        env:
+          IMAGE_REPOSITORY: ${{ steps.image.outputs.repository }}
+          IMAGE_TAG: ${{ github.sha }}
+          BUILD_CONTEXT: ${{ matrix.context }}
+          DOCKERFILE: ${{ matrix.dockerfile }}
+          OCI_SOURCE: https://github.com/${{ github.repository }}
+        run: >-
+          docker build --platform linux/amd64 --file "$DOCKERFILE"
+          --label "org.opencontainers.image.source=$OCI_SOURCE"
+          --tag "$IMAGE_REPOSITORY:$IMAGE_TAG" "$BUILD_CONTEXT"
+
+      - name: Prepare the Trivy report directory
+        run: mkdir -p trivy-reports
+
+      - name: Scan for HIGH and CRITICAL vulnerabilities
+        id: trivy
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.image.outputs.repository }}:${{ github.sha }}
+          format: table
+          output: trivy-reports/${{ matrix.name }}.txt
+          severity: HIGH,CRITICAL
+          vuln-type: os,library
+          version: v0.76.0
+          exit-code: '1'
+
+      - name: Upload Trivy report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-${{ matrix.name }}-${{ github.run_id }}
+          path: trivy-reports/${{ matrix.name }}.txt
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Enforce the vulnerability gate
+        if: steps.trivy.outcome == 'failure'
+        run: exit 1
+
+      - name: Export the scanned image for publishing
+        if: github.event_name == 'push'
+        env:
+          IMAGE_REPOSITORY: ${{ steps.image.outputs.repository }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: >-
+          docker save "$IMAGE_REPOSITORY:$IMAGE_TAG"
+          | gzip --no-name > "$RUNNER_TEMP/image.tar.gz"
+
+      - name: Upload the scanned image
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scanned-image-${{ matrix.name }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/image.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: Publish ${{ matrix.name }}
+    if: github.event_name == 'push'
+    needs: build-and-scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [vote, result, worker]
+    steps:
+      - name: Derive the GHCR repository name
+        id: image
+        env:
+          IMAGE_NAME: ${{ matrix.name }}
+        run: |
+          image_owner="${GITHUB_REPOSITORY_OWNER,,}"
+          printf 'repository=ghcr.io/%s/example-voting-app-%s\n' "$image_owner" "$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Download the scanned image
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: scanned-image-${{ matrix.name }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/scanned-image
+
+      - name: Load the scanned image
+        run: gzip --decompress --stdout "$RUNNER_TEMP/scanned-image/image.tar.gz" | docker load
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Push the scanned commit image
+        env:
+          IMAGE_REPOSITORY: ${{ steps.image.outputs.repository }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: docker push "$IMAGE_REPOSITORY:$IMAGE_TAG"
