@@ -1,0 +1,23 @@
+# Fixed db and redis names are application DNS contracts: one release per namespace.
+imagePullSecrets: []
+vote:
+  image: { repository: ghcr.io/ecstasywonder/example-voting-app-vote, tag: 1523b4c54e28014f0d0d275ec54d49d94319ca35, digest: sha256:afbfb76554fac91d46235cb8c628618cfe6e432b4239880918b23dafb5494df2 }
+  replicas: 1
+  resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 250m, memory: 256Mi } }
+result:
+  image: { repository: ghcr.io/ecstasywonder/example-voting-app-result, tag: 1523b4c54e28014f0d0d275ec54d49d94319ca35, digest: sha256:bb4da68205ad07bb50ef3679c7ab74a8de15910186d717b51a92cbb8f174f1bc }
+  replicas: 1
+  resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 250m, memory: 256Mi } }
+worker:
+  image: { repository: ghcr.io/ecstasywonder/example-voting-app-worker, tag: 1523b4c54e28014f0d0d275ec54d49d94319ca35, digest: sha256:eae0364a2bc0c857d96aa67c609d4bf34c87cf59cad2ddcaaaad7b37997e9c23 }
+  replicas: 1
+  resources: { requests: { cpu: 50m, memory: 96Mi }, limits: { cpu: 300m, memory: 384Mi } }
+redis:
+  image: redis:7.4.11-alpine3.21@sha256:858f009f9709ce576febc734aa78b8f6d624b82571f9ddb6bda4377c833b3499
+  storage: { size: 2Gi, storageClass: local-path }
+  resources: { requests: { cpu: 50m, memory: 64Mi }, limits: { cpu: 250m, memory: 256Mi } }
+db:
+  image: postgres:15.16-alpine3.23@sha256:5fe8ca7fc662071188c30271cb870d1ce9a6ec4578c934b064697ae77a9241e1
+  existingSecretName: voting-db
+  storage: { size: 5Gi, storageClass: local-path }
+  resources: { requests: { cpu: 100m, memory: 256Mi }, limits: { cpu: 500m, memory: 512Mi } }

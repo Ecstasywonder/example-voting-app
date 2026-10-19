@@ -1,0 +1,100 @@
+{{- range $component := list "vote" "result" }}
+{{- $config := index $.Values $component }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $component }}
+  labels:
+    {{- include "voting-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  replicas: {{ $config.replicas }}
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+    spec:
+      automountServiceAccountToken: false
+      {{- with $.Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "voting-app.seccomp" $ | nindent 8 }}
+      containers:
+        - name: {{ $component }}
+          image: {{ include "voting-app.image" $config.image | quote }}
+          imagePullPolicy: IfNotPresent
+          ports: [{ name: http, containerPort: 8080 }]
+          env:
+            - { name: PORT, value: "8080" }
+            {{- if eq $component "result" }}
+            - { name: PGHOST, value: db }
+            - { name: PGUSER, value: voting_app }
+            - { name: PGDATABASE, value: postgres }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "voting-app.dbSecretName" $ }}, key: app-password } }
+            {{- end }}
+          securityContext:
+            {{- include "voting-app.restricted" $ | nindent 12 }}
+            runAsUser: {{ ternary 10001 1000 (eq $component "vote") }}
+            runAsGroup: {{ ternary 10001 1000 (eq $component "vote") }}
+            runAsNonRoot: true
+          resources: {{- toYaml $config.resources | nindent 12 }}
+          startupProbe: { httpGet: { path: /, port: http }, failureThreshold: 30, periodSeconds: 2 }
+          readinessProbe: { httpGet: { path: /, port: http }, periodSeconds: 5 }
+          livenessProbe: { httpGet: { path: /, port: http }, periodSeconds: 10 }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]
+---
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  labels:
+    {{- include "voting-app.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  replicas: {{ .Values.worker.replicas }}
+  strategy: { type: RollingUpdate, rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } }
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+    spec:
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "voting-app.seccomp" . | nindent 8 }}
+      containers:
+        - name: worker
+          image: {{ include "voting-app.image" .Values.worker.image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: PGHOST, value: db }
+            - { name: PGUSER, value: voting_app }
+            - { name: PGDATABASE, value: postgres }
+            - name: PGPASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "voting-app.dbSecretName" . }}, key: app-password } }
+          securityContext:
+            {{- include "voting-app.restricted" . | nindent 12 }}
+            runAsUser: 1654
+            runAsGroup: 1654
+            runAsNonRoot: true
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}
+          # Chiseled runtime intentionally has no shell/probe binary.
+          volumeMounts: [{ name: tmp, mountPath: /tmp }]
+      volumes: [{ name: tmp, emptyDir: {} }]

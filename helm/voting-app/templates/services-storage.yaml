@@ -1,0 +1,46 @@
+{{- range $name := list "vote" "result" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "voting-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "voting-app.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+  ports: [{ name: http, port: 8080, targetPort: http }]
+---
+{{- end }}
+{{- range $name := list "redis" "db" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "voting-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "voting-app.selectorLabels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $name }}
+  ports: [{ name: {{ ternary "redis" "postgres" (eq $name "redis") }}, port: {{ ternary 6379 5432 (eq $name "redis") }}, targetPort: {{ ternary "redis" "postgres" (eq $name "redis") }} }]
+---
+{{- end }}
+{{- range $name := list "redis" "db" }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-data
+  labels:
+    {{- include "voting-app.labels" $ | nindent 4 }}
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: {{ (index $.Values $name).storage.storageClass | quote }}
+  resources:
+    requests: { storage: {{ (index $.Values $name).storage.size }} }
+---
+{{- end }}

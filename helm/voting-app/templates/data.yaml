@@ -1,0 +1,84 @@
+{{- range $component := list "redis" "db" }}
+{{- $config := index $.Values $component }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $component }}
+  labels:
+    {{- include "voting-app.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: {{ $component }}
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels:
+      {{- include "voting-app.selectorLabels" $ | nindent 6 }}
+      app.kubernetes.io/component: {{ $component }}
+  template:
+    metadata:
+      labels:
+        {{- include "voting-app.selectorLabels" $ | nindent 8 }}
+        app.kubernetes.io/component: {{ $component }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "voting-app.seccomp" $ | nindent 8 }}
+        fsGroup: {{ ternary 1000 70 (eq $component "redis") }}
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: {{ ternary "redis" "postgres" (eq $component "redis") }}
+          image: {{ $config.image | quote }}
+          imagePullPolicy: IfNotPresent
+          {{- if eq $component "redis" }}
+          args: ["redis-server", "--appendonly", "yes"]
+          ports: [{ name: redis, containerPort: 6379 }]
+          {{- else }}
+          ports: [{ name: postgres, containerPort: 5432 }]
+          env:
+            - { name: POSTGRES_USER, value: postgres }
+            - { name: POSTGRES_DB, value: postgres }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "voting-app.dbSecretName" $ }}, key: admin-password } }
+            - name: APP_DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: {{ include "voting-app.dbSecretName" $ }}, key: app-password } }
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          {{- end }}
+          securityContext:
+            {{- if eq $component "redis" }}
+            {{- include "voting-app.restricted" $ | nindent 12 }}
+            runAsUser: 999
+            runAsGroup: 1000
+            {{- else }}
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+            runAsUser: 70
+            runAsGroup: 70
+            {{- end }}
+            runAsNonRoot: true
+          resources: {{- toYaml $config.resources | nindent 12 }}
+          startupProbe:
+            exec: { command: {{ ternary (list "redis-cli" "ping") (list "pg_isready" "-U" "postgres" "-d" "postgres") (eq $component "redis") | toJson }} }
+            failureThreshold: 30
+            periodSeconds: 2
+          readinessProbe:
+            exec: { command: {{ ternary (list "redis-cli" "ping") (list "pg_isready" "-U" "postgres" "-d" "postgres") (eq $component "redis") | toJson }} }
+          livenessProbe:
+            exec: { command: {{ ternary (list "redis-cli" "ping") (list "pg_isready" "-U" "postgres" "-d" "postgres") (eq $component "redis") | toJson }} }
+          volumeMounts:
+            - { name: data, mountPath: {{ ternary "/data" "/var/lib/postgresql/data" (eq $component "redis") }} }
+            - { name: tmp, mountPath: /tmp }
+            {{- if eq $component "db" }}
+            - { name: initdb, mountPath: /docker-entrypoint-initdb.d }
+            {{- end }}
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: {{ $component }}-data }
+        - { name: tmp, emptyDir: {} }
+        {{- if eq $component "db" }}
+        - name: initdb
+          configMap:
+            name: db-init
+            defaultMode: 0555
+        {{- end }}
+---
+{{- end }}

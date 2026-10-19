@@ -1,0 +1,7 @@
+apiVersion: v2
+name: voting-app
+description: Secure single-release deployment of the example voting application
+type: application
+version: 0.1.0
+appVersion: "c8c6d09833bb8c0bb3d1acfa0fe33fd1167a8211"
+kubeVersion: ">=1.26.0-0"
