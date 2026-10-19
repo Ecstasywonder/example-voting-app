@@ -112,19 +112,87 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ steps.image.outputs.repository }}:${{ github.sha }}
-          format: table
-          output: trivy-reports/${{ matrix.name }}.txt
+          format: json
+          output: ${{ runner.temp }}/trivy-${{ matrix.name }}.json
           severity: HIGH,CRITICAL
           vuln-type: os,library
           version: v0.76.0
           exit-code: '1'
+
+      - name: Create and print a sanitized Trivy report
+        if: always()
+        env:
+          TRIVY_RAW_REPORT: ${{ runner.temp }}/trivy-${{ matrix.name }}.json
+          TRIVY_SANITIZED_REPORT: trivy-reports/${{ matrix.name }}.json
+          EXPECTED_IMAGE: ${{ steps.image.outputs.repository }}:${{ github.sha }}
+        run: |
+          set -eu
+          if [ ! -f "$TRIVY_RAW_REPORT" ]; then
+            printf 'Trivy did not produce the expected JSON report: %s\n' "$TRIVY_RAW_REPORT" >&2
+            exit 1
+          fi
+          jq -e --arg image "$EXPECTED_IMAGE" '
+            .SchemaVersion == 2 and .ArtifactName == $image and
+            (.Results | type == "array")
+          ' "$TRIVY_RAW_REPORT" >/dev/null
+          jq '{
+            SchemaVersion,
+            ArtifactName,
+            ArtifactType,
+            Results: [
+              .Results[]? | {
+                Target,
+                Class,
+                Type,
+                Vulnerabilities: [
+                  .Vulnerabilities[]? | {
+                    VulnerabilityID,
+                    PkgName,
+                    InstalledVersion,
+                    FixedVersion,
+                    Severity
+                  }
+                ],
+                Secrets: [
+                  .Secrets[]? | {
+                    RuleID,
+                    Category,
+                    Severity,
+                    Title,
+                    StartLine,
+                    EndLine
+                  }
+                ]
+              }
+            ]
+          }' "$TRIVY_RAW_REPORT" > "$TRIVY_SANITIZED_REPORT"
+          jq -e . "$TRIVY_SANITIZED_REPORT" >/dev/null
+          jq -c '
+            .Results[]? as $result |
+            (($result.Vulnerabilities // [])[]? | {
+              kind: "vulnerability",
+              target: $result.Target,
+              severity: .Severity,
+              id: .VulnerabilityID,
+              package: .PkgName,
+              installedVersion: .InstalledVersion,
+              fixedVersion: .FixedVersion
+            }),
+            (($result.Secrets // [])[]? | {
+              kind: "secret",
+              target: $result.Target,
+              ruleID: .RuleID,
+              startLine: .StartLine,
+              endLine: .EndLine
+            })
+          ' "$TRIVY_SANITIZED_REPORT"
 
       - name: Upload Trivy report
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: trivy-${{ matrix.name }}-${{ github.run_id }}
-          path: trivy-reports/${{ matrix.name }}.txt
+          path: trivy-reports/${{ matrix.name }}.json
           if-no-files-found: error
           retention-days: 7
 
