@@ -4,3 +4,15 @@ bin/
 obj/
 .vs/
 node_modules/
+
+# Local Terraform state, plans, variable values, and retrieved kubeconfigs.
+# The lock file is intentionally committed for reproducible provider installs.
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/*.tfvars
+terraform/*.tfplan
+terraform/*.tfplan.json
+terraform/tfplan
+terraform/tfplan.json
+terraform/kubeconfig*

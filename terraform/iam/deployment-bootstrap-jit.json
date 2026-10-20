@@ -1,0 +1,348 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadTerraformDeploymentState",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeIamInstanceProfileAssociations",
+        "ec2:DescribeImages",
+        "ec2:DescribeInstanceAttribute",
+        "ec2:DescribeInstanceCreditSpecifications",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeKeyPairs",
+        "ec2:DescribeSecurityGroupRules",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeTags",
+        "ec2:DescribeVolumes",
+        "ec2:DescribeVpcAttribute",
+        "ec2:DescribeVpcs"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "ReadExactIAMDeploymentResources",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetRole",
+        "iam:ListAttachedRolePolicies",
+        "iam:ListRolePolicies",
+        "iam:ListRoleTags"
+      ],
+      "Resource": [
+        "arn:aws:iam::896986966867:role/TSAcademyCapstoneClusterSSM",
+        "arn:aws:iam::896986966867:role/TSAcademyCapstoneGitHubDeploy"
+      ],
+      "Condition": {
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "ReadExactGitHubInlinePolicy",
+      "Effect": "Allow",
+      "Action": "iam:GetRolePolicy",
+      "Resource": "arn:aws:iam::896986966867:role/TSAcademyCapstoneGitHubDeploy",
+      "Condition": {
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "ReadExactInstanceProfile",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetInstanceProfile",
+        "iam:ListInstanceProfileTags"
+      ],
+      "Resource": "arn:aws:iam::896986966867:instance-profile/TSAcademyCapstoneClusterSSM",
+      "Condition": {
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "ReadExactOIDCProvider",
+      "Effect": "Allow",
+      "Action": "iam:GetOpenIDConnectProvider",
+      "Resource": "arn:aws:iam::896986966867:oidc-provider/token.actions.githubusercontent.com",
+      "Condition": {
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "ReadExactManagedPolicies",
+      "Effect": "Allow",
+      "Action": [
+        "iam:GetPolicy",
+        "iam:GetPolicyVersion"
+      ],
+      "Resource": [
+        "arn:aws:iam::896986966867:policy/TSAcademyCapstoneGitHubDeployBoundary",
+        "arn:aws:iam::896986966867:policy/TSAcademyCapstoneNodeSSMBoundary",
+        "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+      ],
+      "Condition": {
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "CreateClusterRoleWithMandatoryBoundary",
+      "Effect": "Allow",
+      "Action": "iam:CreateRole",
+      "Resource": "arn:aws:iam::896986966867:role/TSAcademyCapstoneClusterSSM",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::896986966867:policy/TSAcademyCapstoneNodeSSMBoundary"
+        },
+        "StringEquals": {
+          "aws:RequestTag/Name": "TSAcademyCapstoneClusterSSM",
+          "aws:RequestTag/ManagedBy": "Terraform",
+          "aws:RequestTag/Project": "TS Academy DevOps Capstone"
+        },
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": [
+            "ManagedBy",
+            "Name",
+            "Project"
+          ]
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "CreateGitHubRoleWithMandatoryBoundary",
+      "Effect": "Allow",
+      "Action": "iam:CreateRole",
+      "Resource": "arn:aws:iam::896986966867:role/TSAcademyCapstoneGitHubDeploy",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PermissionsBoundary": "arn:aws:iam::896986966867:policy/TSAcademyCapstoneGitHubDeployBoundary"
+        },
+        "StringEquals": {
+          "aws:RequestTag/Name": "TSAcademyCapstoneGitHubDeploy",
+          "aws:RequestTag/ManagedBy": "Terraform",
+          "aws:RequestTag/Project": "TS Academy DevOps Capstone"
+        },
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": [
+            "ManagedBy",
+            "Name",
+            "Project"
+          ]
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "TagExactClusterRole",
+      "Effect": "Allow",
+      "Action": "iam:TagRole",
+      "Resource": "arn:aws:iam::896986966867:role/TSAcademyCapstoneClusterSSM",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Name": "TSAcademyCapstoneClusterSSM",
+          "aws:RequestTag/ManagedBy": "Terraform",
+          "aws:RequestTag/Project": "TS Academy DevOps Capstone"
+        },
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": [
+            "ManagedBy",
+            "Name",
+            "Project"
+          ]
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "TagExactGitHubRole",
+      "Effect": "Allow",
+      "Action": "iam:TagRole",
+      "Resource": "arn:aws:iam::896986966867:role/TSAcademyCapstoneGitHubDeploy",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Name": "TSAcademyCapstoneGitHubDeploy",
+          "aws:RequestTag/ManagedBy": "Terraform",
+          "aws:RequestTag/Project": "TS Academy DevOps Capstone"
+        },
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": [
+            "ManagedBy",
+            "Name",
+            "Project"
+          ]
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "CreateAndTagExactInstanceProfile",
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateInstanceProfile",
+        "iam:TagInstanceProfile"
+      ],
+      "Resource": "arn:aws:iam::896986966867:instance-profile/TSAcademyCapstoneClusterSSM",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/Name": "TSAcademyCapstoneClusterSSM",
+          "aws:RequestTag/ManagedBy": "Terraform",
+          "aws:RequestTag/Project": "TS Academy DevOps Capstone"
+        },
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": [
+            "ManagedBy",
+            "Name",
+            "Project"
+          ]
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "AddExactRoleToExactInstanceProfile",
+      "Effect": "Allow",
+      "Action": "iam:AddRoleToInstanceProfile",
+      "Resource": [
+        "arn:aws:iam::896986966867:instance-profile/TSAcademyCapstoneClusterSSM",
+        "arn:aws:iam::896986966867:role/TSAcademyCapstoneClusterSSM"
+      ],
+      "Condition": {
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "AttachOnlySSMCoreToClusterRole",
+      "Effect": "Allow",
+      "Action": "iam:AttachRolePolicy",
+      "Resource": "arn:aws:iam::896986966867:role/TSAcademyCapstoneClusterSSM",
+      "Condition": {
+        "ArnEquals": {
+          "iam:PolicyARN": "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "PutOnlyGitHubDeploymentInlinePolicy",
+      "Effect": "Allow",
+      "Action": "iam:PutRolePolicy",
+      "Resource": "arn:aws:iam::896986966867:role/TSAcademyCapstoneGitHubDeploy",
+      "Condition": {
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "PassOnlyClusterRoleToEC2",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::896986966867:role/TSAcademyCapstoneClusterSSM",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ec2.amazonaws.com"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "AssociateExactProfileToExistingCluster",
+      "Effect": "Allow",
+      "Action": "ec2:AssociateIamInstanceProfile",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:instance/i-0974f7712a1dc61ab",
+      "Condition": {
+        "ArnEquals": {
+          "ec2:NewInstanceProfile": "arn:aws:iam::896986966867:instance-profile/TSAcademyCapstoneClusterSSM"
+        },
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "CreateAndTagExactDeploymentDocument",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:AddTagsToResource",
+        "ssm:CreateDocument"
+      ],
+      "Resource": "arn:aws:ssm:us-east-1:896986966867:document/TSAcademyCapstoneDeployVoting",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1",
+          "aws:RequestTag/Name": "TSAcademyCapstoneDeployVoting",
+          "aws:RequestTag/ManagedBy": "Terraform",
+          "aws:RequestTag/Project": "TS Academy DevOps Capstone"
+        },
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": [
+            "ManagedBy",
+            "Name",
+            "Project"
+          ]
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    },
+    {
+      "Sid": "ReadExactDeploymentDocument",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:DescribeDocument",
+        "ssm:DescribeDocumentPermission",
+        "ssm:GetDocument",
+        "ssm:ListTagsForResource"
+      ],
+      "Resource": "arn:aws:ssm:us-east-1:896986966867:document/TSAcademyCapstoneDeployVoting",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        },
+        "DateLessThan": {
+          "aws:CurrentTime": "2026-10-20T20:37:19Z"
+        }
+      }
+    }
+  ]
+}

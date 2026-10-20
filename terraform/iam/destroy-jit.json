@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadTerraformDestroyState",
+      "Effect": "Allow",
+      "Action": ["ec2:DescribeImages", "ec2:DescribeInstanceAttribute", "ec2:DescribeInstanceCreditSpecifications", "ec2:DescribeInstances", "ec2:DescribeInstanceStatus", "ec2:DescribeInstanceTypes", "ec2:DescribeKeyPairs", "ec2:DescribeNetworkInterfaces", "ec2:DescribeSecurityGroupRules", "ec2:DescribeSecurityGroups", "ec2:DescribeSubnets", "ec2:DescribeTags", "ec2:DescribeVolumes", "ec2:DescribeVpcAttribute", "ec2:DescribeVpcs"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1"},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-17T13:20:59Z"}
+      }
+    },
+    {
+      "Sid": "TerminateOnlyOldCapstoneInstance",
+      "Effect": "Allow",
+      "Action": "ec2:TerminateInstances",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:instance/i-06a0294779190322f",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1"},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-17T13:20:59Z"}
+      }
+    },
+    {
+      "Sid": "DeleteOnlyOldCapstoneSecurityGroup",
+      "Effect": "Allow",
+      "Action": "ec2:DeleteSecurityGroup",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:security-group/sg-07b1653a0a5d22fc7",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1"},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-17T13:20:59Z"}
+      }
+    }
+  ]
+}

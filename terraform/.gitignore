@@ -1,0 +1,9 @@
+.terraform/
+*.tfstate*
+*.tfplan*
+plan.json
+tfplan*
+*.tfvars
+*.tfvars.json
+kubeconfig*
+crash*.log

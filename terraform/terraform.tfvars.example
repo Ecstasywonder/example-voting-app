@@ -1,0 +1,11 @@
+# Copy to terraform.tfvars only when a network or address changes. It is ignored by Git.
+# Do not place AWS credentials, SSH private keys, or K3s tokens in this file.
+aws_region               = "us-east-1"
+cluster_name             = "ts-academy-k3s"
+vpc_id                   = "vpc-0dcd1badcb27a2470"
+subnet_id                = "subnet-0ddbedcfd2b8e3a06"
+ubuntu_ami_id            = "ami-0fa5967347d08d2df"
+instance_type            = "t3a.xlarge"
+key_name                 = "test key"
+operator_cidr            = "105.113.111.49/32"
+workstation_private_cidr = "172.31.42.166/32"

@@ -1,0 +1,141 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ReadTerraformApplyState",
+      "Effect": "Allow",
+      "Action": ["ec2:DescribeImages", "ec2:DescribeInstanceAttribute", "ec2:DescribeInstanceCreditSpecifications", "ec2:DescribeInstances", "ec2:DescribeInstanceStatus", "ec2:DescribeInstanceTypes", "ec2:DescribeKeyPairs", "ec2:DescribeSecurityGroupRules", "ec2:DescribeSecurityGroups", "ec2:DescribeSubnets", "ec2:DescribeTags", "ec2:DescribeVolumes", "ec2:DescribeVpcAttribute", "ec2:DescribeVpcs"],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1"},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    },
+    {
+      "Sid": "CreateSecurityGroupInExactVpc",
+      "Effect": "Allow",
+      "Action": "ec2:CreateSecurityGroup",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:vpc/vpc-0dcd1badcb27a2470",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1"},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    },
+    {
+      "Sid": "CreateOnlyTaggedSecurityGroup",
+      "Effect": "Allow",
+      "Action": "ec2:CreateSecurityGroup",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:security-group/*",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1", "aws:RequestTag/Name": "ts-academy-k3s-sg", "aws:RequestTag/ManagedBy": "Terraform", "aws:RequestTag/Project": "TS Academy DevOps Capstone"},
+        "ForAllValues:StringEquals": {"aws:TagKeys": ["Name", "ManagedBy", "Project"]},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    },
+    {
+      "Sid": "TagSecurityGroupOnlyAtCreation",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:security-group/*",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1", "ec2:CreateAction": "CreateSecurityGroup", "aws:RequestTag/Name": "ts-academy-k3s-sg", "aws:RequestTag/ManagedBy": "Terraform", "aws:RequestTag/Project": "TS Academy DevOps Capstone"},
+        "ForAllValues:StringEquals": {"aws:TagKeys": ["Name", "ManagedBy", "Project"]},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    },
+    {
+      "Sid": "ConfigureOnlyTaggedSecurityGroup",
+      "Effect": "Allow",
+      "Action": ["ec2:AuthorizeSecurityGroupEgress", "ec2:AuthorizeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress", "ec2:RevokeSecurityGroupIngress"],
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:security-group/*",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1", "ec2:ResourceTag/Name": "ts-academy-k3s-sg", "ec2:ResourceTag/ManagedBy": "Terraform", "ec2:ResourceTag/Project": "TS Academy DevOps Capstone"},
+        "ArnEquals": {"ec2:Vpc": "arn:aws:ec2:us-east-1:896986966867:vpc/vpc-0dcd1badcb27a2470"},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    },
+    {
+      "Sid": "UseExactLaunchInputs",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": ["arn:aws:ec2:us-east-1::image/ami-0fa5967347d08d2df", "arn:aws:ec2:us-east-1:896986966867:subnet/subnet-0ddbedcfd2b8e3a06", "arn:aws:ec2:us-east-1:896986966867:key-pair/test key"],
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1"},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    },
+    {
+      "Sid": "UseOnlyCapstoneSecurityGroup",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:security-group/*",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1", "ec2:ResourceTag/Name": "ts-academy-k3s-sg", "ec2:ResourceTag/ManagedBy": "Terraform", "ec2:ResourceTag/Project": "TS Academy DevOps Capstone"},
+        "ArnEquals": {"ec2:Vpc": "arn:aws:ec2:us-east-1:896986966867:vpc/vpc-0dcd1badcb27a2470"},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    },
+    {
+      "Sid": "CreateNetworkInterfaceOnlyInExactPlacement",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:network-interface/*",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1"},
+        "Bool": {"ec2:AssociatePublicIpAddress": "true"},
+        "ArnEquals": {"ec2:Subnet": "arn:aws:ec2:us-east-1:896986966867:subnet/subnet-0ddbedcfd2b8e3a06", "ec2:Vpc": "arn:aws:ec2:us-east-1:896986966867:vpc/vpc-0dcd1badcb27a2470"},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    },
+    {
+      "Sid": "LaunchOnlyHardenedTaggedInstance",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:instance/*",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1", "aws:RequestTag/Name": "ts-academy-k3s", "aws:RequestTag/ManagedBy": "Terraform", "aws:RequestTag/Project": "TS Academy DevOps Capstone", "ec2:InstanceType": "t3a.xlarge", "ec2:MetadataHttpEndpoint": "enabled", "ec2:MetadataHttpTokens": "required", "ec2:InstanceMetadataTags": "disabled", "ec2:Tenancy": "default"},
+        "NumericEquals": {"ec2:MetadataHttpPutResponseHopLimit": "1"},
+        "Null": {"ec2:InstanceProfile": "true"},
+        "ForAllValues:StringEquals": {"aws:TagKeys": ["Name", "ManagedBy", "Project"]},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    },
+    {
+      "Sid": "CreateOnlyExactEncryptedTaggedRootVolume",
+      "Effect": "Allow",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:volume/*",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1", "aws:RequestTag/Name": "ts-academy-k3s-root", "aws:RequestTag/ManagedBy": "Terraform", "aws:RequestTag/Project": "TS Academy DevOps Capstone", "ec2:VolumeType": "gp3"},
+        "Bool": {"ec2:Encrypted": "true"},
+        "NumericEquals": {"ec2:VolumeSize": "60"},
+        "NumericLessThanEqualsIfExists": {"ec2:VolumeIops": "3000", "ec2:VolumeThroughput": "125"},
+        "ArnEquals": {"ec2:ParentSnapshot": "arn:aws:ec2:us-east-1::snapshot/snap-067b29aebf0e07731"},
+        "ForAllValues:StringEquals": {"aws:TagKeys": ["Name", "ManagedBy", "Project"]},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    },
+    {
+      "Sid": "TagInstanceOnlyAtLaunch",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:instance/*",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1", "ec2:CreateAction": "RunInstances", "aws:RequestTag/Name": "ts-academy-k3s", "aws:RequestTag/ManagedBy": "Terraform", "aws:RequestTag/Project": "TS Academy DevOps Capstone"},
+        "ForAllValues:StringEquals": {"aws:TagKeys": ["Name", "ManagedBy", "Project"]},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    },
+    {
+      "Sid": "TagRootVolumeOnlyAtLaunch",
+      "Effect": "Allow",
+      "Action": "ec2:CreateTags",
+      "Resource": "arn:aws:ec2:us-east-1:896986966867:volume/*",
+      "Condition": {
+        "StringEquals": {"aws:RequestedRegion": "us-east-1", "ec2:CreateAction": "RunInstances", "aws:RequestTag/Name": "ts-academy-k3s-root", "aws:RequestTag/ManagedBy": "Terraform", "aws:RequestTag/Project": "TS Academy DevOps Capstone"},
+        "ForAllValues:StringEquals": {"aws:TagKeys": ["Name", "ManagedBy", "Project"]},
+        "DateLessThan": {"aws:CurrentTime": "2026-10-19T17:20:00Z"}
+      }
+    }
+  ]
+}

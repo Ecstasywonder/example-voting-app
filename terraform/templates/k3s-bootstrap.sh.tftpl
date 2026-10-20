@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+export DEBIAN_FRONTEND=noninteractive
+K3S_VERSION='${k3s_version}'
+K3S_SHA256='${k3s_binary_sha256}'
+K3S_URL="https://github.com/k3s-io/k3s/releases/download/$${K3S_VERSION}/k3s"
+
+retry() {
+  local attempt=1
+  local max_attempts=5
+  until "$@"; do
+    if [ "$attempt" -ge "$max_attempts" ]; then
+      return 1
+    fi
+    sleep "$((attempt * 5))"
+    attempt="$((attempt + 1))"
+  done
+}
+
+retry apt-get update -y
+retry apt-get install -y ca-certificates curl
+
+install -d -m 0755 /usr/local/bin /etc/rancher/k3s /var/lib/rancher/k3s
+retry curl --fail --location --silent --show-error --retry 3 --output /usr/local/bin/k3s "$${K3S_URL}"
+echo "$${K3S_SHA256}  /usr/local/bin/k3s" | sha256sum --check --status
+chmod 0755 /usr/local/bin/k3s
+
+cat >/etc/rancher/k3s/config.yaml <<'EOF'
+write-kubeconfig-mode: "0600"
+disable:
+  - traefik
+  - servicelb
+tls-san:
+  - 127.0.0.1
+node-name: ${node_name}
+EOF
+
+cat >/etc/systemd/system/k3s.service <<'EOF'
+[Unit]
+Description=Lightweight Kubernetes
+Documentation=https://k3s.io
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+EnvironmentFile=-/etc/default/k3s
+ExecStart=/usr/local/bin/k3s server
+KillMode=process
+Delegate=yes
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+TimeoutStartSec=0
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now k3s
+systemctl is-active --quiet k3s

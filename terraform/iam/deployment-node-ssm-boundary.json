@@ -1,0 +1,83 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowSSMAgentCoreState",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:DescribeAssociation",
+        "ssm:GetDeployablePatchSnapshotForInstance",
+        "ssm:GetManifest",
+        "ssm:ListAssociations",
+        "ssm:ListInstanceAssociations",
+        "ssm:PutComplianceItems",
+        "ssm:PutConfigurePackageResult",
+        "ssm:PutInventory",
+        "ssm:UpdateAssociationStatus",
+        "ssm:UpdateInstanceAssociationStatus",
+        "ssm:UpdateInstanceInformation"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestedRegion": "us-east-1"
+        }
+      }
+    },
+    {
+      "Sid": "ReadOnlyApprovedParameterPrefix",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters"
+      ],
+      "Resource": "arn:aws:ssm:us-east-1:896986966867:parameter/ts-academy-capstone/*"
+    },
+    {
+      "Sid": "DenyParameterReadsOutsideApprovedPrefix",
+      "Effect": "Deny",
+      "Action": [
+        "ssm:GetParameter",
+        "ssm:GetParameters",
+        "ssm:GetParametersByPath"
+      ],
+      "NotResource": "arn:aws:ssm:us-east-1:896986966867:parameter/ts-academy-capstone/*"
+    },
+    {
+      "Sid": "ReadOnlyApprovedSSMDocuments",
+      "Effect": "Allow",
+      "Action": [
+        "ssm:DescribeDocument",
+        "ssm:GetDocument"
+      ],
+      "Resource": [
+        "arn:aws:ssm:us-east-1:896986966867:document/TSAcademyCapstoneDeployVoting",
+        "arn:aws:ssm:us-east-1::document/*"
+      ]
+    },
+    {
+      "Sid": "UseSSMMessageChannels",
+      "Effect": "Allow",
+      "Action": [
+        "ssmmessages:CreateControlChannel",
+        "ssmmessages:CreateDataChannel",
+        "ssmmessages:OpenControlChannel",
+        "ssmmessages:OpenDataChannel"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Sid": "UseLegacyEC2MessageChannels",
+      "Effect": "Allow",
+      "Action": [
+        "ec2messages:AcknowledgeMessage",
+        "ec2messages:DeleteMessage",
+        "ec2messages:FailMessage",
+        "ec2messages:GetEndpoint",
+        "ec2messages:GetMessages",
+        "ec2messages:SendReply"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
