@@ -1,65 +1,98 @@
-# Example Voting App
+# TS Academy DevOps Capstone 1: Voting Application
 
-A simple distributed application running across multiple Docker containers.
+This repository is a course implementation of Docker, Terraform, Kubernetes,
+Helm, CI, image scanning, and controlled deployment for the
+[Docker example voting application](https://github.com/dockersamples/example-voting-app).
+The upstream project remains the reference for the application itself; this
+repository documents and supplies the capstone-specific deployment work.
 
-## Getting started
+The voting system has five running components: the Python Vote web service,
+Redis queue, .NET Worker, PostgreSQL, and Node.js Result web service. The
+local Compose setup also includes an optional one-shot seed service for
+development.
 
-Download [Docker Desktop](https://www.docker.com/products/docker-desktop) for Mac or Windows. [Docker Compose](https://docs.docker.com/compose) will be automatically installed. On Linux, make sure you have the latest version of [Compose](https://docs.docker.com/compose/install/).
+## Capstone layout
 
-This solution uses Python, Node.js, .NET, with Redis for messaging and Postgres for storage.
+- [Architecture](docs/architecture/capstone-1.md) describes the component,
+  network, identity, and delivery boundaries.
+- [Terraform](terraform/README.md) provisions the lowest-cost course cluster:
+  one Terraform-owned K3s node in the existing AWS default VPC.
+- [Helm](docs/helm.md) documents the single chart, private service access, and
+  rollback demonstration.
+- [Continuous integration](docs/ci.md) documents Compose tests, immutable
+  image builds, Trivy gates, GHCR publishing, and the configured deployment
+  handoff.
+- [Node deployment boundary](deployment/README.md) documents the fixed SSM
+  command, namespace-scoped Kubernetes identity, archive validation, and
+  rollback behavior.
 
-Run in this directory to build and run the app:
+## What is deployed
 
-```shell
-docker compose up
+The Helm release is named `voting` in namespace `voting`. It uses the single
+chart at `helm/voting-app` and its single `values.yaml`. Application images are
+referenced by full commit tag and immutable digest. Redis and PostgreSQL use
+K3s `local-path` persistent claims; a rollback changes workloads while retaining
+these claims. Database credentials are created only on the K3s node in the
+pre-existing `voting-db` Secret and are not committed.
+
+All application Services are `ClusterIP`. There is no public HTTP, HTTPS,
+NodePort, LoadBalancer, or Kubernetes API access. Reach either web
+service through an authenticated SSH path and a Kubernetes port-forward from
+the EC2 workstation, for example:
+
+```bash
+sudo /usr/local/bin/k3s kubectl -n voting port-forward service/vote 8080:8080
+sudo /usr/local/bin/k3s kubectl -n voting port-forward service/result 8081:8080
 ```
 
-The `vote` app will be running at [http://localhost:8080](http://localhost:8080), and the `results` will be at [http://localhost:8081](http://localhost:8081).
+Run those commands in separate terminals on the private K3s node (or use the private workstation
+tunnel described in the Terraform guide); they are intentionally not commands
+for a public endpoint.
 
-Alternately, if you want to run it on a [Docker Swarm](https://docs.docker.com/engine/swarm/), first make sure you have a swarm. If you don't, run:
+## Delivery controls
 
-```shell
-docker swarm init
+GitHub-hosted runners execute the Compose end-to-end test and build and scan
+the three custom images on every push and pull request. Pull requests do not
+publish. A push to `main` in `Ecstasywonder/example-voting-app` can publish the
+already-scanned image and its immutable digest to GHCR. The workflow is
+configured to pass the three verified digests to a fixed SSM document using a
+short-lived GitHub OIDC role; it has no SSH key, static AWS key, or Kubernetes
+administrator configuration.
+
+The current [Capstone CI workflow](https://github.com/Ecstasywonder/example-voting-app/actions/workflows/ci.yml)
+is public. Workflow configuration and the security properties of this handoff
+are documented in [docs/ci.md](docs/ci.md).
+
+Automatic deployment was verified on 20 October 2026 in
+[run 39486670544, attempt 2](https://github.com/Ecstasywonder/example-voting-app/actions/runs/39486670544).
+All eight jobs passed, and the SSM deployment completed at Helm revision 5.
+[Deployment evidence](docs/evidence/automatic-deployment.md) records the exact
+commit, image digests, authentication correction, and access checks. The manual
+rollback procedure remains in [docs/helm.md](docs/helm.md).
+
+## Operating constraints
+
+All manual downloads, installations, Terraform operations, Helm operations,
+and validation run on the designated EC2 hosts. The operator's local machine is
+used only for source review, edits, and controlled SSH access. Private keys,
+AWS credentials, kubeconfigs, Terraform state, plans, and generated database
+credentials must stay out of Git.
+
+The course brief refers to starter configurations, but none were supplied with
+the brief. This repository uses the equivalent project layout above: Compose
+files and Dockerfiles at the application root, Terraform under `terraform/`,
+a single chart under `helm/voting-app/`, GitHub Actions under `.github/`, and
+host deployment controls under `deployment/`.
+
+## Local development
+
+For application-only development, the upstream-compatible Compose definition
+is retained. Its browser ports are local development ports, not the production
+cluster exposure model:
+
+```bash
+docker compose up --build
 ```
 
-Once you have your swarm, in this directory run:
-
-```shell
-docker stack deploy --compose-file docker-stack.yml vote
-```
-
-## Run the app in Kubernetes
-
-The folder k8s-specifications contains the YAML specifications of the Voting App's services.
-
-Run the following command to create the deployments and services. Note it will create these resources in your current namespace (`default` if you haven't changed it.)
-
-```shell
-kubectl create -f k8s-specifications/
-```
-
-The `vote` web app is then available on port 31000 on each host of the cluster, the `result` web app is available on port 31001.
-
-To remove them, run:
-
-```shell
-kubectl delete -f k8s-specifications/
-```
-
-## Architecture
-
-![Architecture diagram](architecture.excalidraw.png)
-
-* A front-end web app in [Python](/vote) which lets you vote between two options
-* A [Redis](https://hub.docker.com/_/redis/) which collects new votes
-* A [.NET](/worker/) worker which consumes votes and stores them in…
-* A [Postgres](https://hub.docker.com/_/postgres/) database backed by a Docker volume
-* A [Node.js](/result) web app which shows the results of the voting in real time
-
-## Notes
-
-The voting application only accepts one vote per client browser. It does not register additional votes if a vote has already been submitted from a client.
-
-This isn't an example of a properly architected perfectly designed distributed app... it's just a simple
-example of the various types of pieces and languages you might see (queues, persistent data, etc), and how to
-deal with them in Docker at a basic level.
+See the [upstream README](https://github.com/dockersamples/example-voting-app#readme)
+for the original application behavior and language-specific development notes.

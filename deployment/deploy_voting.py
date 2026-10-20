@@ -257,7 +257,9 @@ def deploy(commit_sha: str, digests: tuple[str, str, str]) -> None:
             "--namespace", NAMESPACE,
             "--wait", "--timeout", "3m", "--rollback-on-failure",
             *value_arguments,
-        ], timeout=210)
+        # Helm's three-minute forward wait can be followed by its own rollback
+        # under --rollback-on-failure, so leave that recovery time available.
+        ], timeout=390)
 
         try:
             with test_path.open("rb") as test_stream:

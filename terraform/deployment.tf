@@ -124,7 +124,7 @@ resource "aws_iam_role" "github_deploy" {
       Condition = {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
-          "token.actions.githubusercontent.com:sub" = "repo:Ecstasywonder/example-voting-app:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub" = "repo:Ecstasywonder@56361947/example-voting-app@1418042624:ref:refs/heads/main"
         }
       }
     }]

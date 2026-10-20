@@ -62,6 +62,13 @@ immediately after applying the reviewed saved plan. Subsequent resource updates
 or teardown need newly reviewed scoped permissions; this bootstrap policy is
 not a standing administrator grant.
 
+`iam/deployment-trust-update-jit.json` is a separate expiring read-plus-trust-update
+grant for the GitHub role only. It was needed to match the immutable OIDC subject
+observed in CloudTrail, rather than the obsolete name-only subject. It grants no
+role creation, policy attachment, instance-profile association, or SSM document
+write access. Renew its expiry only for an approved change and remove it after
+the reviewed Terraform apply.
+
 Install the reviewed node-side boundary from [deployment](../deployment/README.md)
 before enabling the workflow. No local AWS keys, SSH key, permanent Kubernetes
 token, or administrator kubeconfig is passed to GitHub or copied onto EC2.
