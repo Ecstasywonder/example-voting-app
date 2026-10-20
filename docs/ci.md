@@ -13,3 +13,15 @@ Pull requests only test, build, and scan. They do not log in to a registry, rece
 - `ghcr.io/<lowercase-owner>/example-voting-app-worker:<full-github-sha>`
 
 The workflow uses `GITHUB_TOKEN` for GHCR authentication. Repository Actions settings must allow the token to write packages for push publishing to succeed. A passing GitHub Actions run remains the evidence that the build and scan gates have succeeded; this document does not claim a passing run before one has been executed.
+
+For each qualifying push to `main` in `Ecstasywonder/example-voting-app`, the publishing job inspects the local image's `RepoDigests` after the registry push and publishes a one-day, per-image JSON artifact containing the image name, GHCR repository, full commit SHA, and immutable `repository@sha256` digest. Pushes to other branches and forks run the build, end-to-end, and scan gates but cannot publish packages. This handoff is deliberately separate from the image tarball: the deployment job accepts exactly the three expected manifest filenames and validates their complete schema, expected repository names, unique image names, commit SHA, and digest format before it can request a deployment.
+
+## Automatic deployment
+
+After all three images have passed the existing end-to-end, build, and vulnerability gates and have been published, a deployment job runs automatically only for a push to `refs/heads/main` in `Ecstasywonder/example-voting-app`. Pull requests, pushes to other branches, and repository forks cannot enter this job.
+
+The deployment job has only `id-token: write`; it has no repository checkout, package permission, long-lived AWS key, Kubernetes configuration, or SSH key. It assumes `arn:aws:iam::896986966867:role/TSAcademyCapstoneGitHubDeploy` through GitHub OIDC for 15 minutes, limited to AWS account `896986966867` and `us-east-1`. The role's OIDC trust policy is expected to restrict issuance to this repository's `main` branch.
+
+Using the resulting short-lived role session, the job locates exactly one online SSM-managed instance tagged `Name=ts-academy-k3s` and `Project=TS Academy DevOps Capstone`. It verifies the instance ID and requires SSM Agent `3.3.2746.0` or later, which supports Run Command parameter interpolation as environment variables. After validating each full `repository@sha256:...` manifest against its expected repository, it passes the SHA-256 component (for example, `sha256:...`) with the full commit SHA to only the custom SSM document `TSAcademyCapstoneDeployVoting` at its `$DEFAULT` version. The document is managed separately and must constrain its parameters with `interpolationType: ENV_VAR` and the corresponding validation patterns.
+
+The workflow records the SSM command ID early in the run summary and polls the command invocation for up to about 12 minutes. It accepts success only when SSM reports `Success` with response code `0`; terminal failure statuses fail the job. It does not grant or use `ssm:CancelCommand`.

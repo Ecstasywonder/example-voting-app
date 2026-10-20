@@ -1,0 +1,84 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+readonly DEPLOY_USER="capstone-deployer"
+readonly DEPLOY_HOME="/var/lib/ts-capstone/deployments"
+readonly DEPLOY_LIB="/usr/local/lib/ts-capstone"
+readonly DEPLOY_ETC="/etc/ts-capstone"
+
+# SSM permits 600 seconds. Bound lock acquisition, token creation, download, Helm,
+# E2E, cleanup, and child shutdown below that limit in one trusted process tree.
+if [[ ${1:-} != "--within-watchdog" ]]; then
+  exec /usr/bin/timeout --signal=TERM --kill-after=15s 570s \
+    "$0" --within-watchdog "$@"
+fi
+shift
+
+usage() {
+  echo "usage: run-deployment COMMIT_SHA VOTE_DIGEST RESULT_DIGEST WORKER_DIGEST" >&2
+}
+
+# Validate the complete fixed interface before touching host or cluster state.
+if [[ $# -ne 4 ]]; then
+  usage
+  exit 64
+fi
+if [[ ! $1 =~ ^[0-9a-f]{40}$ ]]; then
+  echo "COMMIT_SHA must be 40 lowercase hexadecimal characters" >&2
+  exit 64
+fi
+for argument_number in 2 3 4; do
+  if [[ ! ${!argument_number} =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    echo "each image digest must be sha256 followed by 64 lowercase hexadecimal characters" >&2
+    exit 64
+  fi
+done
+
+if [[ $(id -u) -ne 0 ]]; then
+  echo "run-deployment must run as root" >&2
+  exit 77
+fi
+
+readonly commit_sha=$1
+readonly vote_digest=$2
+readonly result_digest=$3
+readonly worker_digest=$4
+
+install -d -o root -g root -m 0700 /run/ts-capstone
+exec 9>/run/ts-capstone/deploy.lock
+chmod 0600 /run/ts-capstone/deploy.lock
+if ! /usr/bin/flock --exclusive --timeout 30 9; then
+  echo "timed out waiting for the deployment lock" >&2
+  exit 75
+fi
+
+runtime_dir=$(mktemp --directory /run/ts-capstone-deploy.XXXXXXXX)
+cleanup() {
+  rm -rf -- "$runtime_dir"
+}
+trap cleanup EXIT HUP INT TERM
+
+deploy_group_id=$(id -g "$DEPLOY_USER")
+chown root:"$deploy_group_id" "$runtime_dir"
+chmod 0750 "$runtime_dir"
+
+token_file="$runtime_dir/token"
+kubeconfig_file="$runtime_dir/kubeconfig.json"
+umask 077
+/usr/local/bin/k3s kubectl --namespace voting create token capstone-deployer \
+  --duration=15m >"$token_file"
+/usr/bin/python3 "$DEPLOY_LIB/write_kubeconfig.py" \
+  "$token_file" "$DEPLOY_ETC/server-ca.crt" "$kubeconfig_file" "$deploy_group_id"
+rm -f -- "$token_file"
+
+# The downloaded archive and extracted chart must be private to the no-login
+# account, never the caller-controlled SSM working directory.
+cd -- "$DEPLOY_HOME"
+/usr/sbin/runuser --user "$DEPLOY_USER" -- \
+  /usr/bin/env -i \
+  HOME="$DEPLOY_HOME" \
+  PATH="/usr/local/bin:/usr/bin:/bin" \
+  KUBECONFIG="$kubeconfig_file" \
+  HELM_PLUGINS="$DEPLOY_LIB/no-plugins" \
+  "$DEPLOY_LIB/deploy-voting" \
+    "$commit_sha" "$vote_digest" "$result_digest" "$worker_digest"

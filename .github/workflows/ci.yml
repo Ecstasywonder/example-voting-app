@@ -116,6 +116,7 @@ jobs:
           output: ${{ runner.temp }}/trivy-${{ matrix.name }}.json
           severity: HIGH,CRITICAL
           vuln-type: os,library
+          scanners: vuln,secret
           version: v0.76.0
           exit-code: '1'
 
@@ -220,7 +221,10 @@ jobs:
 
   publish:
     name: Publish ${{ matrix.name }}
-    if: github.event_name == 'push'
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.repository == 'Ecstasywonder/example-voting-app'
     needs: build-and-scan
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -260,3 +264,208 @@ jobs:
           IMAGE_REPOSITORY: ${{ steps.image.outputs.repository }}
           IMAGE_TAG: ${{ github.sha }}
         run: docker push "$IMAGE_REPOSITORY:$IMAGE_TAG"
+
+      - name: Record the immutable published image digest
+        env:
+          IMAGE_NAME: ${{ matrix.name }}
+          IMAGE_REPOSITORY: ${{ steps.image.outputs.repository }}
+          IMAGE_TAG: ${{ github.sha }}
+          DIGEST_MANIFEST: ${{ runner.temp }}/${{ matrix.name }}.json
+        run: |
+          set -euo pipefail
+          repo_digests="$(docker image inspect "$IMAGE_REPOSITORY:$IMAGE_TAG" --format '{{json .RepoDigests}}')"
+          digest="$(jq -er --arg repository "$IMAGE_REPOSITORY" '
+            [ .[] | select(startswith($repository + "@sha256:")) | select(test("@sha256:[0-9a-f]{64}$")) ]
+            | if length == 1 then .[0] else error("expected exactly one digest for the published repository") end
+          ' <<<"$repo_digests")"
+          jq -en \
+            --arg name "$IMAGE_NAME" \
+            --arg repository "$IMAGE_REPOSITORY" \
+            --arg commit "$IMAGE_TAG" \
+            --arg digest "$digest" \
+            '{name: $name, repository: $repository, commit: $commit, digest: $digest}' \
+            > "$DIGEST_MANIFEST"
+          jq -e '
+            keys == ["commit", "digest", "name", "repository"] and
+            (.name | type == "string") and
+            (.repository | type == "string") and
+            (.commit | test("^[0-9a-f]{40}$")) and
+            (.digest | test("^.+@sha256:[0-9a-f]{64}$"))
+          ' "$DIGEST_MANIFEST" >/dev/null
+
+      - name: Upload the published image digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: published-digest-${{ matrix.name }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/${{ matrix.name }}.json
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    name: Deploy immutable images to the k3s cluster
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      github.repository == 'Ecstasywonder/example-voting-app'
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      id-token: write
+    env:
+      AWS_REGION: us-east-1
+      SSM_DOCUMENT_NAME: TSAcademyCapstoneDeployVoting
+      SSM_AGENT_MIN_VERSION: 3.3.2746.0
+    steps:
+      - name: Download published image digests
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: published-digest-*-${{ github.run_id }}
+          path: ${{ runner.temp }}/published-digests
+          merge-multiple: true
+
+      - name: Validate the deployment inputs
+        id: digests
+        env:
+          DIGEST_DIRECTORY: ${{ runner.temp }}/published-digests
+          EXPECTED_COMMIT: ${{ github.sha }}
+          EXPECTED_REPOSITORY_PREFIX: ghcr.io/ecstasywonder/example-voting-app-
+        run: |
+          set -euo pipefail
+          expected_files=$'result.json\nvote.json\nworker.json'
+          actual_files="$(find "$DIGEST_DIRECTORY" -type f -printf '%f\n' | LC_ALL=C sort)"
+          test "$actual_files" = "$expected_files"
+
+          jq -es \
+            --arg commit "$EXPECTED_COMMIT" \
+            --arg prefix "$EXPECTED_REPOSITORY_PREFIX" '
+              def valid_record:
+                type == "object" and
+                keys == ["commit", "digest", "name", "repository"] and
+                (.name | type == "string" and IN("vote", "result", "worker")) and
+                (. as $record | .repository | type == "string" and . == ($prefix + $record.name)) and
+                (.commit | type == "string" and . == $commit) and
+                (. as $record | .digest | type == "string" and (capture("^(?<repository>.+)@sha256:[0-9a-f]{64}$").repository == $record.repository))
+              ;
+              length == 3 and
+              all(.[]; valid_record) and
+              ([.[].name] | sort == ["result", "vote", "worker"])
+            ' \
+            "$DIGEST_DIRECTORY/vote.json" \
+            "$DIGEST_DIRECTORY/result.json" \
+            "$DIGEST_DIRECTORY/worker.json" >/dev/null
+
+          # The manifests retain repository@sha256 for provenance. The fixed
+          # SSM document accepts the digest component only, after the schema
+          # validation above has bound it to the expected repository.
+          printf 'vote_digest=%s\n' "$(jq -er '.digest | split("@")[1]' "$DIGEST_DIRECTORY/vote.json")" >> "$GITHUB_OUTPUT"
+          printf 'result_digest=%s\n' "$(jq -er '.digest | split("@")[1]' "$DIGEST_DIRECTORY/result.json")" >> "$GITHUB_OUTPUT"
+          printf 'worker_digest=%s\n' "$(jq -er '.digest | split("@")[1]' "$DIGEST_DIRECTORY/worker.json")" >> "$GITHUB_OUTPUT"
+
+      - name: Configure deployment credentials
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: arn:aws:iam::896986966867:role/TSAcademyCapstoneGitHubDeploy
+          aws-region: us-east-1
+          role-session-name: GHA-${{ github.run_id }}
+          role-duration-seconds: 900
+          allowed-account-ids: 896986966867
+
+      - name: Locate the online deployment instance
+        id: instance
+        env:
+          INSTANCE_INFORMATION: ${{ runner.temp }}/instance-information.json
+        run: |
+          set -euo pipefail
+          aws ssm describe-instance-information \
+            --filters 'Key=tag:Name,Values=ts-academy-k3s' 'Key=tag:Project,Values=TS Academy DevOps Capstone' \
+            --query 'InstanceInformationList[].{id:InstanceId,ping:PingStatus,agent:AgentVersion}' \
+            --output json > "$INSTANCE_INFORMATION"
+          jq -e --arg minimum_version "$SSM_AGENT_MIN_VERSION" '
+            def version: split(".") | map(tonumber);
+            length == 1 and
+            (.[0].id | type == "string" and test("^i-[0-9a-f]{8,17}$")) and
+            (.[0].ping == "Online") and
+            (.[0].agent | type == "string" and test("^[0-9]+(\\.[0-9]+){3}$") and (version >= ($minimum_version | version)))
+          ' "$INSTANCE_INFORMATION" >/dev/null
+          printf 'id=%s\n' "$(jq -er '.[0].id' "$INSTANCE_INFORMATION")" >> "$GITHUB_OUTPUT"
+
+      - name: Send the deployment command
+        id: command
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.id }}
+          PARAMETERS_FILE: ${{ runner.temp }}/ssm-parameters.json
+          COMMAND_RESPONSE: ${{ runner.temp }}/ssm-send-command.json
+          VOTE_DIGEST: ${{ steps.digests.outputs.vote_digest }}
+          RESULT_DIGEST: ${{ steps.digests.outputs.result_digest }}
+          WORKER_DIGEST: ${{ steps.digests.outputs.worker_digest }}
+        run: |
+          set -euo pipefail
+          jq -en \
+            --arg commit_sha "$GITHUB_SHA" \
+            --arg vote_digest "$VOTE_DIGEST" \
+            --arg result_digest "$RESULT_DIGEST" \
+            --arg worker_digest "$WORKER_DIGEST" \
+            '{commitSha: [$commit_sha], voteDigest: [$vote_digest], resultDigest: [$result_digest], workerDigest: [$worker_digest]}' \
+            > "$PARAMETERS_FILE"
+          aws ssm send-command \
+            --document-name "$SSM_DOCUMENT_NAME" \
+            --document-version '$DEFAULT' \
+            --instance-ids "$INSTANCE_ID" \
+            --parameters "file://$PARAMETERS_FILE" \
+            --timeout-seconds 600 \
+            --query '{commandId:Command.CommandId}' \
+            --output json > "$COMMAND_RESPONSE"
+          command_id="$(jq -er '.commandId | select(type == "string" and test("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"))' "$COMMAND_RESPONSE")"
+          printf 'id=%s\n' "$command_id" >> "$GITHUB_OUTPUT"
+          {
+            printf '### SSM deployment command\n\n'
+            printf '%s\n' "- Command ID: \`$command_id\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Wait for the deployment command
+        env:
+          INSTANCE_ID: ${{ steps.instance.outputs.id }}
+          COMMAND_ID: ${{ steps.command.outputs.id }}
+          INVOCATION_RESPONSE: ${{ runner.temp }}/ssm-command-invocation.json
+          INVOCATION_ERROR: ${{ runner.temp }}/ssm-command-invocation-error.log
+        run: |
+          set -euo pipefail
+          deadline=$((SECONDS + 720))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            if ! aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "$INSTANCE_ID" \
+              --output json > "$INVOCATION_RESPONSE" 2> "$INVOCATION_ERROR"; then
+              if grep -Fq 'InvocationDoesNotExist' "$INVOCATION_ERROR"; then
+                sleep 10
+                continue
+              fi
+              cat "$INVOCATION_ERROR" >&2
+              exit 1
+            fi
+
+            status="$(jq -er '.Status | select(type == "string")' "$INVOCATION_RESPONSE")"
+            case "$status" in
+              Pending|InProgress|Delayed|Cancelling)
+                sleep 10
+                ;;
+              Success)
+                jq -r '.StandardOutputContent // ""' "$INVOCATION_RESPONSE"
+                jq -r '.StandardErrorContent // ""' "$INVOCATION_RESPONSE" >&2
+                jq -e '.ResponseCode == 0' "$INVOCATION_RESPONSE" >/dev/null
+                exit 0
+                ;;
+              Failed|TimedOut|Cancelled)
+                jq -r '.StandardOutputContent // ""' "$INVOCATION_RESPONSE"
+                jq -r '.StandardErrorContent // ""' "$INVOCATION_RESPONSE" >&2
+                exit 1
+                ;;
+              *)
+                printf 'Unexpected SSM command status: %s\n' "$status" >&2
+                exit 1
+                ;;
+            esac
+          done
+          printf 'Timed out waiting for SSM command %s\n' "$COMMAND_ID" >&2
+          exit 1
