@@ -1,3 +1,28 @@
+<!-- PORTFOLIO_STAR_V1 -->
+# Voting Application — AWS/Kubernetes Delivery Capstone
+
+**Portfolio case study — Situation · Task · Action · Result (STAR)**
+
+### Situation
+An upstream distributed voting sample required repeatable cloud provisioning and a controlled deployment path.
+
+### Task
+Build an end-to-end infrastructure and delivery workflow while keeping services and administrative interfaces private.
+
+### Action
+Added Terraform-based AWS/K3s infrastructure, Helm release configuration, Compose integration checks, GitHub Actions builds and Trivy scanning, immutable GHCR image references, and GitHub OIDC to AWS SSM deployment controls.
+
+### Result
+The README documents a successful automatic deployment on 20 October 2026 (workflow run 39486670544, attempt 2), with eight passing jobs and Helm revision 5. The app itself originates from Docker's example-voting-app; the portfolio contribution is the delivery platform and operational evidence.
+
+**Review the evidence:** [Architecture](docs/architecture/capstone-1.md) · [CI](docs/ci.md) · [Deployment evidence](docs/evidence/automatic-deployment.md)
+
+> **Scope:** Results describe what the repository documents; they are not blanket claims of production readiness. Original/upstream code is credited where applicable.
+
+---
+
+## Detailed project documentation
+
 # TS Academy DevOps Capstone 1: Voting Application
 
 This repository is a course implementation of Docker, Terraform, Kubernetes,
